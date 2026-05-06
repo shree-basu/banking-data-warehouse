@@ -45,3 +45,20 @@ def generate_accounts(customer_ids, n=100):
             'status': random.choice(['Active', 'Inactive', 'Frozen'])
         })
         return pd.DataFrame(accounts)
+    
+def generate_merchants(n=50):
+    categories = ['Food & Dining', 'Travel', 'Healthcare', 'Retail', 'Education','Utilities','Entertainment']
+    merchants = []
+    for _ in range(n):
+        merchants.append({
+            'merchant_id' : str(uuid.uuid4()),
+            'merchant_name': fake.company(),
+            'category': random.choice(categories),
+            'city': fake.city(),
+            'state': fake.state(),
+            'registered_since': fake.date_between(
+                start_date = '-10y', end_date = 'today'
+            ).strftime('%Y-%m-%d'),
+            'status': random.choice(['Active','Inactive'])
+        })
+        return pd.DataFrame(merchants)
