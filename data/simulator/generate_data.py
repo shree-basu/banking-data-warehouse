@@ -26,3 +26,22 @@ def generate_customers(n=100):
             ).strftime('%Y-%m-%d')
         })
         return pd.DataFrame(customers)
+    
+def generate_accounts(customer_ids, n=100):
+    account_types = ['Savings', 'Current', 'Fixed Deposit', 'Recurring Deposit']
+    accounts =[]
+    for _ in range(n):
+        accounts.append({
+            'account_id': str(uuid.uuid4()),
+            'customer_id': random.choice(customer_ids),
+            'account_type': random.choice(account_types),
+            'balance': round(random.uniform(1000,500000),2)
+            'currency': 'INR',
+            'branch_code': fake.bothify(text = 'BR###'),
+            'ifsc_code': fake.bothify(text='????0######'),
+            'opened_date': fake.date_between(
+                start_date = '-5y', end_date = 'today'
+            ).strftime('%Y-%m-%d'),
+            'status': random.choice(['Active', 'Inactive', 'Frozen'])
+        })
+        return pd.DataFrame(accounts)
