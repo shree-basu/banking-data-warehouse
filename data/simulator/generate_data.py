@@ -62,3 +62,21 @@ def generate_merchants(n=50):
             'status': random.choice(['Active','Inactive'])
         })
         return pd.DataFrame(merchants)
+
+def generate_dates(start_date = '2020-01-01', end_date = '2024-12-31'):
+    dates = []
+    current = datetime.strptime(start_date, '%Y-%m-%d')
+    end = datetime.strptime(end_date, '%Y-%m-%d')
+    while current <= end:
+        dates.append({
+            'date_id': current.strftime('%Y%m%d'),
+            'full_date': current.strftime('%Y-%m-%d'),
+            'day': current.day,
+            'month': current.month,
+            'month_name': current.strftime('%B'),
+            'quarter': (current.month -1)//3 + 1,
+            'day_of_week': current.strftime('%A'),
+            'is_weekend': current.weekday()>= 5
+        })
+        current += timedelta(days=1)
+    return pd.DataFrame(dates)
