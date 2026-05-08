@@ -14,7 +14,7 @@ def generate_customers(n=100):
         customers.append({
             'customer_id': str(uuid.uuid4()),
             'name': fake.name(),
-            'age': random.randomint(21,65),
+            'age': random.randint(21,65),
             'gender': random.choice(['Male', 'Female']),
             'city': fake.city(),
             'state': fake.state(),
@@ -25,7 +25,7 @@ def generate_customers(n=100):
                 start_date = '-5y', end_date = 'today'
             ).strftime('%Y-%m-%d')
         })
-        return pd.DataFrame(customers)
+    return pd.DataFrame(customers)
     
 def generate_accounts(customer_ids, n=100):
     account_types = ['Savings', 'Current', 'Fixed Deposit', 'Recurring Deposit']
@@ -35,7 +35,7 @@ def generate_accounts(customer_ids, n=100):
             'account_id': str(uuid.uuid4()),
             'customer_id': random.choice(customer_ids),
             'account_type': random.choice(account_types),
-            'balance': round(random.uniform(1000,500000),2)
+            'balance': round(random.uniform(1000,500000),2),
             'currency': 'INR',
             'branch_code': fake.bothify(text = 'BR###'),
             'ifsc_code': fake.bothify(text='????0######'),
@@ -44,7 +44,7 @@ def generate_accounts(customer_ids, n=100):
             ).strftime('%Y-%m-%d'),
             'status': random.choice(['Active', 'Inactive', 'Frozen'])
         })
-        return pd.DataFrame(accounts)
+    return pd.DataFrame(accounts)
     
 def generate_merchants(n=50):
     categories = ['Food & Dining', 'Travel', 'Healthcare', 'Retail', 'Education','Utilities','Entertainment']
@@ -61,7 +61,7 @@ def generate_merchants(n=50):
             ).strftime('%Y-%m-%d'),
             'status': random.choice(['Active','Inactive'])
         })
-        return pd.DataFrame(merchants)
+    return pd.DataFrame(merchants)
 
 def generate_dates(start_date = '2020-01-01', end_date = '2024-12-31'):
     dates = []
@@ -98,4 +98,43 @@ def generate_transactions(account_ids, merchant_ids, date_ids, n=500):
            'ip_address': fake.ipv4() if random.random()> 0.3 else None,
            'country_code': random.choice(['IN','US','GB','AE','SG'])
         })
-        return pd.DataFrame(transactions)
+    return pd.DataFrame(transactions)
+    
+def main():
+    output_dir = 'data/simulator/output'
+    os.makedirs(output_dir, exist_ok= True)
+
+    print("Generating customers...")
+    customers_df = generate_customers(100)
+
+    print("Generating accounts...")
+    accounts_df = generate_accounts(
+        customers_df['customer_id'].tolist(),100)
+    
+    print("Generating merchants...")
+    merchants_df = generate_merchants(50)
+
+    print("Generating dates...")
+    dates_df = generate_dates()
+
+    print("Generating transactions...")
+    transactions_df = generate_transactions(
+        accounts_df['account_id'].tolist(),
+        merchants_df['merchant_id'].tolist(),
+        dates_df['date_id'].tolist(),
+        500
+    )
+
+    customers_df.to_csv(f'{output_dir}/customers.csv', index = False)
+    accounts_df.to_csv(f'{output_dir}/accounts.csv', index=False)
+    merchants_df.to_csv(f'{output_dir}/merchants.csv', index=False)
+    dates_df.to_csv(f'{output_dir}/dates.csv', index=False)
+    transactions_df.to_csv(f'{output_dir}/transactions.csv', index=False)
+
+    print("All CSVs saved to", output_dir)
+
+if __name__ == '__main__':
+    main()
+
+
+
