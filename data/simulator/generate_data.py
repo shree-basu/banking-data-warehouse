@@ -80,3 +80,22 @@ def generate_dates(start_date = '2020-01-01', end_date = '2024-12-31'):
         })
         current += timedelta(days=1)
     return pd.DataFrame(dates)
+
+def generate_transactions(account_ids, merchant_ids, date_ids, n=500):
+    channels = ['ATM', 'Mobile App', 'Internet Banking', 'Branch']
+    transactions = []
+    for _ in range(n):
+        transactions.append({
+          'transaction_id': str(uuid.uuid4()),
+          'account_id': random.choice(account_ids),
+           'merchant_id': random.choice(merchant_ids),
+           'date_id': random.choice(date_ids),
+           'amount': round(random.uniform(100,100000),2),
+           'currency': 'INR',
+           'channel': random.choice(channels),
+           'transaction_type': random.choice(['Debit','Credit']),
+           'status': random.choice(['Success', 'Failed', 'Pending']),
+           'ip_address': fake.ipv4() if random.random()> 0.3 else None,
+           'country_code': random.choice(['IN','US','GB','AE','SG'])
+        })
+        return pd.DataFrame(transactions)
