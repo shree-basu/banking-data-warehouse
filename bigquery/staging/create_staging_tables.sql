@@ -10,3 +10,15 @@ CREATE TABLE IF NOT EXISTS 'banking_dwh.stg_customers'(
     kyc_status STRING,
     customer_since STRING
 );
+
+CREATE TABLE IF NOT EXISTS 'banking_dwh.stg_accounts'(
+    account_id STRING,
+    customer_id STRING,
+    account_type STRING,
+    balance FLOAT64,
+    currency STRING,
+    branch_code STRING,
+    ifsc_code STRING,
+    opened_date STRING,
+    status STRING
+);
