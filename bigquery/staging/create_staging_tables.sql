@@ -22,3 +22,13 @@ CREATE TABLE IF NOT EXISTS 'banking_dwh.stg_accounts'(
     opened_date STRING,
     status STRING
 );
+
+CREATE TABLE IF NOT EXISTS 'banking_dwh.stg_merchants'(
+    merchant_id STRING,
+    merchant_name STRING,
+    category STRING,
+    city STRING,
+    state STRING,
+    registered_since STRING,
+    status STRING
+);
