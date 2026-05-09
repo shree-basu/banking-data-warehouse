@@ -46,3 +46,15 @@ CREATE TABLE IF NOT EXISTS 'banking_dwh.stg_transactions'(
     ip_address STRING,
     country_code STRING
 );
+
+CREATE TABLE IF NOT EXISTS 'banking_dwh.stg_dates'(
+    date_id STRING,
+    full_date STRING,
+    day INT64,
+    month INT64,
+    month_name STRING,
+    quarter INT64,
+    year INT64,
+    day_of_week STRING,
+    is_weekend BOOL
+);
