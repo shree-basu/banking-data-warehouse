@@ -10,7 +10,6 @@ CREATE TABLE IF NOT EXISTS 'banking_dwh.dim_customer'(
     kyc_status STRING,
     customer_since DATE
 );
-
 CREATE TABLE IF NOT EXISTS 'banking_dwh.dim_acoount'(
     account_id STRING,
     customer_id STRING,
@@ -22,7 +21,6 @@ CREATE TABLE IF NOT EXISTS 'banking_dwh.dim_acoount'(
     opened_date DATE,
     status STRING
 );
-
 CREATE TABLE IF NOT EXISTS 'banking_dwh.dim_merchant'(
     merchant_id STRING,
     merchant_name STRING,
@@ -31,4 +29,15 @@ CREATE TABLE IF NOT EXISTS 'banking_dwh.dim_merchant'(
     state STRING,
     registered_since STRING,
     status STRING
+);
+CREATE TABLE IF NOT EXISTS 'banking_dwh.dim_date'(
+    date_id STRING,
+    full_date DATE,
+    day INT64,
+    month INT64,
+    month_name STRING,
+    quarter INT64,
+    year INT64,
+    day_of_week STRING,
+    is_weekend BOOL
 );
