@@ -15,3 +15,9 @@ variable "dataset_id"{
     type = string
     default = banking_dwh
 }
+
+variable "gcs_bucket_name"{
+    description = "GCS Bucket name for raw data"
+    type = string
+    default = banking-dwh-raw-data
+}
