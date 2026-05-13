@@ -9,3 +9,9 @@ variable "region"{
     type = string
     default = asia-south1
 }
+
+variable "dataset_id"{
+    description = "BigQuery Dataset ID"
+    type = string
+    default = banking_dwh
+}
