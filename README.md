@@ -1,6 +1,6 @@
 # 🏦 Banking Data Warehouse
 
-An end-to-end, production-grade data warehouse built on Google Cloud Platform (GCP) for a retail banking domain. This project simulates real-world data engineering workflows — from raw data ingestion to analytics-ready dashboards.
+An end-to-end, production-grade data warehouse on Google Cloud Platform — built to model the data engineering workflow of a retail banking analytics platform. Simulates the full lifecycle: raw CSV ingestion → staging in BigQuery → dimensional modeling into a star schema → analytics-ready warehouse tables → Looker Studio reporting. Orchestrated via Cloud Composer (Airflow), provisioned with Terraform, and tested via GitHub Actions on every commit.
 
 ---
 
@@ -114,3 +114,23 @@ Load raw CSVs from GCS → BigQuery Staging (parallel)
 Transform staging → dim_customer, dim_date, dim_merchant (parallel)
 Transform staging → dim_account (after dim_customer)
 Transform staging → fact_transactions (after all dims)
+
+## 🛠️ Improvements Roadmap
+
+This project is functional but has known design improvements I'd implement in a production version:
+
+### 1. Tighten DAG dependency design
+**Current:** All dim transforms wait for all 5 staging loads to complete before any dim runs.
+**Improvement:** Each dim should only wait for its own upstream staging table. `dim_customer` should run as soon as `load_customers` completes, not wait for `load_transactions`. This shortens the critical path significantly.
+
+### 2. Add GCS sensor for upstream file arrival
+**Current:** The DAG assumes raw CSVs are in GCS at 2 AM.
+**Improvement:** Start the DAG with a `GCSObjectExistenceSensor` so it waits gracefully if the upstream producer is late. Pair with a timeout so the DAG fails cleanly after a defined window rather than waiting forever.
+
+### 3. Replace INSERT with MERGE for idempotent dim/fact loads
+**Current:** Dim and fact tables use plain `INSERT` statements — not retry-safe.
+**Improvement:** Use `MERGE` on primary keys (e.g., `customer_id`) so a failed task can be safely retried without producing duplicate rows. This is essential for production reliability.
+
+### 4. Externalize configuration
+**Current:** Project IDs, dataset names, and schedule values are partly hardcoded.
+**Improvement:** Move all environment-specific config to Composer environment variables or a config table, so the same DAG runs in dev / staging / prod without code changes.
