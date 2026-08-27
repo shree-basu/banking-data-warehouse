@@ -1,0 +1,7 @@
+project_id      = "replace-with-dev-project"
+environment     = "dev"
+raw_bucket_name = "replace-with-globally-unique-dev-bucket"
+
+enable_composer                     = false
+enable_workload_identity_federation = false
+github_repository                   = "shree-basu/banking-data-warehouse"

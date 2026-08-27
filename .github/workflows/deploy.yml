@@ -1,0 +1,77 @@
+name: Terraform deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      enable_composer:
+        description: "Create/update the chargeable Composer environment"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: banking-dwh-production
+  cancel-in-progress: false
+
+jobs:
+  plan-and-apply:
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+      TF_VAR_raw_bucket_name: ${{ vars.RAW_BUCKET_NAME }}
+      TF_VAR_environment: prod
+      TF_VAR_enable_composer: ${{ inputs.enable_composer }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Authenticate to Google Cloud with OIDC
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_TERRAFORM_SERVICE_ACCOUNT }}
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: 1.14.5
+      - name: Initialize remote state
+        run: >-
+          terraform -chdir=infra/terraform init -input=false
+          -backend-config="bucket=${{ vars.TERRAFORM_STATE_BUCKET }}"
+          -backend-config="prefix=banking-dwh/prod"
+      - name: Plan
+        run: terraform -chdir=infra/terraform plan -input=false -out=banking.tfplan
+      - name: Preserve reviewed plan
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: banking-dwh-terraform-plan
+          path: infra/terraform/banking.tfplan
+          retention-days: 7
+      - name: Apply approved plan
+        run: terraform -chdir=infra/terraform apply -input=false -auto-approve banking.tfplan
+      - name: Set up Google Cloud CLI
+        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+      - name: Apply BigQuery schema and procedure migrations
+        shell: bash
+        run: |
+          for file in \
+            bigquery/warehouse/create_tables.sql \
+            bigquery/audit/create_audit_tables.sql \
+            bigquery/transforms/publish_curated.sql \
+            bigquery/dq/curated_checks.sql \
+            bigquery/analytics/refresh_daily_metrics.sql; do
+            bq query --project_id="$TF_VAR_project_id" --location=asia-south1 --use_legacy_sql=false < "$file"
+          done
+      - name: Upload DAG when Composer was explicitly enabled
+        if: ${{ inputs.enable_composer }}
+        run: >-
+          gcloud composer environments storage dags import
+          --project="$TF_VAR_project_id"
+          --location=asia-south1
+          --environment="banking-dwh-prod-composer"
+          --source=dags/banking_etl_dag.py
