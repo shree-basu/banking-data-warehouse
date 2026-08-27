@@ -1,1 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+.tools/
+.uv-cache/
+.airflow-test/
+dist/
+build/
+*.egg-info/
+
+# Generated synthetic data and local evidence
+data/generated/
 data/simulator/output/
+reports/
+
+# Airflow local state
+airflow.cfg
+airflow.db
+logs/
+standalone_admin_password.txt
+
+# Terraform local state and credentials
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+*.auto.tfvars
+!*.auto.tfvars.example
+
+# Secrets and local environment
+.env
+*.pem
+*.key
+*service-account*.json
+credentials*.json
+
+# Editors / operating systems
+.DS_Store
+.idea/
+.vscode/

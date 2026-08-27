@@ -1,136 +1,65 @@
-# 🏦 Banking Data Warehouse
+# Banking batch data warehouse
 
-An end-to-end, production-grade data warehouse on Google Cloud Platform — built to model the data engineering workflow of a retail banking analytics platform. Simulates the full lifecycle: raw CSV ingestion → staging in BigQuery → dimensional modeling into a star schema → analytics-ready warehouse tables → Looker Studio reporting. Orchestrated via Cloud Composer (Airflow), provisioned with Terraform, and tested via GitHub Actions on every commit.
+A production-pattern GCP batch warehouse reference implementation. It demonstrates immutable batch contracts, strict staging, SCD Type 2 dimensions, idempotent facts, reconciliation, quarantine, audit evidence, and conservative infrastructure automation.
 
----
+## Evidence status
 
-## 🏗️ Architecture
-┌─────────────────┐ ┌─────────────┐ ┌──────────────────┐ ┌─────────────────────┐ ┌───────────────┐
-│ Data Simulator │────▶│ GCS Bucket │────▶│ BigQuery Staging │────▶│ BigQuery Warehouse │────▶│ Looker Studio │
-│ (Python) │ │ (Raw CSVs) │ │ (Raw Tables) │ │ (Star Schema) │ │ (Dashboard) │
-└─────────────────┘ └─────────────┘ └──────────────────┘ └─────────────────────┘ └───────────────┘
-▲
-─────────────────────────
-│ Cloud Composer (Airflow) │
-│ Orchestrates all steps │
-─────────────────────────
-
----
-## ⚙️ Tech Stack
-| Tool | Purpose |
-|---|---|
-| Python | Data simulation and generation |
-| Google Cloud Storage (GCS) | Raw data landing zone |
-| BigQuery | Staging and warehouse layers |
-| Cloud Composer (Airflow) | Pipeline orchestration |
-| Terraform | Infrastructure as Code |
-| Looker Studio | Business dashboards |
-| GitHub Actions | CI/CD pipeline |
----
-
-## 📁 Project Structure
-banking-data-warehouse/
-│
-├── data/
-│ └── simulator/
-│ └── generate_data.py # Generates fake banking CSVs
-│
-├── infra/
-│ └── terraform/
-│ ├── main.tf # GCS + BigQuery infrastructure
-│ ├── variables.tf # Configurable variables
-│ └── outputs.tf # Output values after apply
-│
-├── bigquery/
-│ ├── staging/
-│ │ └── create_staging_tables.sql
-│ └── warehouse/
-│ ├── create_dim_tables.sql
-│ └── create_fact_tables.sql
-│
-├── dags/
-│ └── banking_etl_dag.py # Cloud Composer DAG
-│
-├── tests/
-│ └── test_data_quality.py # Data quality checks
-│
-├── .github/
-│ └── workflows/
-│ └── ci.yml # CI/CD pipeline
-│
-└── README.md
-
----
-## 📊 Data Model (Star Schema)
-                ┌──────────────┐
-                │ dim_customer │
-                └──────┬───────┘
-                       │
-┌──────────────┐ ┌──────┴──────────────┐ ┌──────────────┐
-│ dim_date │────│ fact_transactions │────│ dim_merchant │
-└──────────────┘ └──────┬──────────────┘ └──────────────┘
-│
-┌──────┴───────┐
-│ dim_account │
-└──────────────┘
-
-| Table | Type | Rows |
+| Area | Status | Evidence |
 |---|---|---|
-| fact_transactions | Fact | 500+ |
-| dim_customer | Dimension | 100 |
-| dim_account | Dimension | 100 |
-| dim_merchant | Dimension | 50 |
-| dim_date | Dimension | 1,826 |
----
-## 🚀 How to Run
-### 1. Clone the repository
+| Deterministic simulator and manifest | Implemented, locally validated | Acceptance tests cover byte-for-byte replay, checksums, invalid and late-dimension batches |
+| Reference warehouse semantics | Implemented, locally validated | Initial/replay/next-day, SCD invariants, atomic DQ failure, unknown-member repair |
+| Airflow DAG | Implemented, locally parsed | Airflow 2.10.5 DagBag imports with no errors; cloud tasks were not executed |
+| BigQuery DDL/procedures/DQ | Implemented, statically validated | SQLFluff BigQuery parser/lint; no authenticated BigQuery execution yet |
+| Terraform | Implemented, locally validated | Terraform 1.14.5 format/init-without-backend/validate |
+| GCP, Composer, monitoring | Optional, not deployed | `enable_composer=false`; requires authorized project, billing, WIF and state bootstrap |
+| Dashboard | Not implemented | Looker Studio is a possible downstream consumer, not repository evidence |
+
+## Architecture
+
+```mermaid
+flowchart LR
+  S[Seeded simulator/source] --> G[Immutable GCS batch]
+  G --> M[Manifest + SHA-256 gate]
+  M --> ST[Batch-specific strict staging]
+  ST --> DQ[Source/stage DQ + reconciliation]
+  DQ --> P[Atomic SCD2 + fact MERGE]
+  P --> C[Curated DQ + reconciliation]
+  C --> A[Daily aggregate]
+  C --> U[Audit completion]
+  U --> O[Monitoring hooks]
+```
+
+See [architecture](docs/architecture.md), [data model](docs/data-model.md), [contract](docs/data-contract.md), and [runbook](docs/runbook.md).
+
+## Local verification
+
+Requires Python 3.12 and Terraform 1.14.5.
+
 ```bash
-git clone https://github.com/shree-basu/banking-data-warehouse.git
-cd banking-data-warehouse
-2. Install dependencies
-pip install pandas faker
-3. Generate data
-python data/simulator/generate_data.py
-4. Run data quality tests
-python tests/test_data_quality.py
-5. Deploy infrastructure (requires GCP account)
-cd infra/terraform
-terraform init
-terraform plan
-terraform apply
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install -e ".[dev]"
+python -m pytest -q
+ruff check .
+sqlfluff lint bigquery --dialect bigquery --rules CP01 --ignore-local-config
+terraform -chdir=infra/terraform init -backend=false
+terraform -chdir=infra/terraform fmt -check -recursive
+terraform -chdir=infra/terraform validate
+```
 
-✅ Key Features
-Realistic banking data — 500 transactions across 100 customers, 100 accounts, 50 merchants
-ELT pattern — raw data lands in GCS, transformed inside BigQuery using SQL
-Star schema — optimised for analytical queries with partitioning and clustering on fact_transactions
-Automated orchestration — Cloud Composer DAG runs daily at 2AM, loading data from GCS to BigQuery
-Data quality checks — row count, null, duplicate and value validity checks on every run
-Infrastructure as Code — full GCP infrastructure defined in Terraform
-CI/CD — GitHub Actions runs data quality tests on every push to main
+Generate deterministic fixtures without committing them:
 
-📈 Pipeline Schedule
-The DAG runs daily at 2:00 AM IST via Cloud Composer:
-Load raw CSVs from GCS → BigQuery Staging (parallel)
-Transform staging → dim_customer, dim_date, dim_merchant (parallel)
-Transform staging → dim_account (after dim_customer)
-Transform staging → fact_transactions (after all dims)
+```bash
+python data/simulator/generate_data.py --output data/generated --scenario initial --business-date 2026-01-01
+python data/simulator/generate_data.py --output data/generated --scenario next_day --business-date 2026-01-02
+```
 
-## 🛠️ Improvements Roadmap
+For a DagBag test, install `requirements-airflow.txt` with the upstream Airflow 2.10.5 Python constraint file, then run `pytest -q tests/test_dagbag.py`.
 
-This project is functional but has known design improvements I'd implement in a production version:
+## Deployment boundary
 
-### 1. Tighten DAG dependency design
-**Current:** All dim transforms wait for all 5 staging loads to complete before any dim runs.
-**Improvement:** Each dim should only wait for its own upstream staging table. `dim_customer` should run as soon as `load_customers` completes, not wait for `load_transactions`. This shortens the critical path significantly.
+No cloud resources have been deployed. The manual deployment workflow requires repository variables for project, bucket, state bucket, WIF provider, and Terraform service account, plus approval on a GitHub `production` environment. Bootstrap instructions and exact post-deploy checks are in the runbook. Never commit credentials or state.
 
-### 2. Add GCS sensor for upstream file arrival
-**Current:** The DAG assumes raw CSVs are in GCS at 2 AM.
-**Improvement:** Start the DAG with a `GCSObjectExistenceSensor` so it waits gracefully if the upstream producer is late. Pair with a timeout so the DAG fails cleanly after a defined window rather than waiting forever.
+## Project assumptions
 
-### 3. Replace INSERT with MERGE for idempotent dim/fact loads
-**Current:** Dim and fact tables use plain `INSERT` statements — not retry-safe.
-**Improvement:** Use `MERGE` on primary keys (e.g., `customer_id`) so a failed task can be safely retried without producing duplicate rows. This is essential for production reliability.
-
-### 4. Externalize configuration
-**Current:** Project IDs, dataset names, and schedule values are partly hardcoded.
-**Improvement:** Move all environment-specific config to Composer environment variables or a config table, so the same DAG runs in dev / staging / prod without code changes.
+This portfolio system assumes one immutable daily batch at 02:00 Asia/Kolkata, completion within four hours, RPO of one accepted batch, RTO of eight hours, 365-day raw retention, and seven-day staging retention. These are design assumptions—not measured service history or an SLA.
