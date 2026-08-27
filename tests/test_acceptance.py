@@ -39,9 +39,7 @@ def initial_manifest(tmp_path, generator):
 def test_manifest_schema_checksums_and_historical_path(initial_manifest):
     manifest, rows, results = validate_batch(initial_manifest)
     assert manifest["batch_id"] == "batch-20260101-v1"
-    assert set(rows) == {
-        "customers", "accounts", "merchants", "transactions", "account_snapshots"
-    }
+    assert set(rows) == {"customers", "accounts", "merchants", "transactions", "account_snapshots"}
     assert all(result.passed for result in results if result.severity == "ERROR")
     normalized = str(initial_manifest).replace("\\", "/")
     assert "business_date=2026-01-01/batch_id=batch-20260101-v1" in normalized
@@ -98,9 +96,7 @@ def test_initial_replay_and_next_day_scd(initial_manifest, tmp_path, generator):
             assert sum(row["is_current"] for row in versions) == 1
 
 
-def test_critical_dq_failure_is_quarantined_and_atomic(
-    initial_manifest, tmp_path, generator
-):
+def test_critical_dq_failure_is_quarantined_and_atomic(initial_manifest, tmp_path, generator):
     warehouse = LocalWarehouse()
     warehouse.publish(initial_manifest)
     before_counts = warehouse.curated_counts()
@@ -113,8 +109,7 @@ def test_critical_dq_failure_is_quarantined_and_atomic(
     )
     with pytest.raises(BatchContractError) as caught:
         warehouse.publish(invalid)
-    assert any(result.rule_code == "UNIQUE_NATURAL_KEY"
-               for result in caught.value.results)
+    assert any(result.rule_code == "UNIQUE_NATURAL_KEY" for result in caught.value.results)
     assert warehouse.curated_counts() == before_counts
     assert warehouse.transaction_total() == before_total
     assert warehouse.quarantine
@@ -131,8 +126,7 @@ def test_late_dimension_uses_unknown_member(initial_manifest, tmp_path, generato
     )
     warehouse.publish(late)
     late_facts = [
-        fact for fact in warehouse.transactions.values()
-        if fact["batch_id"] == "batch-late"
+        fact for fact in warehouse.transactions.values() if fact["batch_id"] == "batch-late"
     ]
     assert any(fact["account_key"] == UNKNOWN_KEY for fact in late_facts)
     assert warehouse.repair_unknown_dimension_keys() == 0
@@ -141,10 +135,7 @@ def test_late_dimension_uses_unknown_member(initial_manifest, tmp_path, generato
 
 def test_manifest_checksum_tampering_fails(initial_manifest):
     manifest = json.loads(initial_manifest.read_text(encoding="utf-8"))
-    object_name = Path(
-        manifest["expected_entities"]["customers"]["object_path"]
-    ).name
+    object_name = Path(manifest["expected_entities"]["customers"]["object_path"]).name
     (initial_manifest.parent / object_name).write_text("tampered\n", encoding="utf-8")
     with pytest.raises(BatchContractError, match="missing or corrupt"):
         validate_batch(initial_manifest)
-

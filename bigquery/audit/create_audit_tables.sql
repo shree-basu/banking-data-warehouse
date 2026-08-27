@@ -48,4 +48,3 @@ CREATE TABLE IF NOT EXISTS `audit.quarantine` (
 PARTITION BY business_date
 CLUSTER BY batch_id, entity, rule_code
 OPTIONS (description = 'Rejected records with rule and immutable source provenance');
-

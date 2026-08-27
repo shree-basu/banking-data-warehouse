@@ -45,4 +45,3 @@ BEGIN
   WHERE fact.transaction_date = p_business_date
   GROUP BY fact.transaction_date, account.account_type, merchant.category, fact.channel;
 END;
-

@@ -245,4 +245,3 @@ BEGIN
     AND fact.transaction_date >= account.effective_from
     AND fact.transaction_date < account.effective_to;
 END;
-

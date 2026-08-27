@@ -111,4 +111,3 @@ BEGIN
   FROM `audit.batch_run`
   WHERE batch_id = p_batch_id;
 END;
-
