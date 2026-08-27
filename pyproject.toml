@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=75,<76"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "banking-data-warehouse"
+version = "2.0.0"
+description = "Deterministic reference implementation for a production-pattern GCP batch warehouse"
+requires-python = ">=3.11,<3.13"
+dependencies = ["Faker==30.8.2"]
+
+[project.optional-dependencies]
+dev = [
+  "pytest==8.3.5",
+  "ruff==0.11.2",
+  "sqlfluff==3.3.1",
+]
+airflow = [
+  "apache-airflow==2.10.5",
+  "apache-airflow-providers-google==12.0.0",
+]
+cloud = ["google-cloud-bigquery==3.20.1"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["tests"]
+markers = ["airflow: requires the pinned Airflow runtime"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "data/simulator", "dags", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+ignore = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"dags/*.py" = ["S105", "S608"]
+
+[tool.sqlfluff.core]
+dialect = "bigquery"
+templater = "raw"
+max_line_length = 120
+exclude_rules = ["LT05"]
+rules = "CP01"
+
+[tool.sqlfluff.indentation]
+tab_space_size = 2

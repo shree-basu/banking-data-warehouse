@@ -1,0 +1,3 @@
+# Local and pull-request validation.
+-e .[dev]
+
