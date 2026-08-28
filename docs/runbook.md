@@ -8,13 +8,15 @@
 4. Keep `enable_composer=false` until billing/cost approval. Configure GitHub WIF and a protected `production` environment before using the manual deploy workflow.
 5. Apply infrastructure, execute SQL in order: warehouse tables, audit tables, publish procedures, DQ procedures, aggregate procedure; then upload the DAG. This order is mandatory.
 
+When Composer is explicitly enabled, Terraform supplies `gcp_project_id`, `raw_bucket`, and `bq_location` through the corresponding `AIRFLOW_VAR_*` environment variables expected by the DAG. No manual Airflow-variable duplication is required.
+
 ## Daily triage
 
 Start with `audit.batch_run`, then `audit.dq_result` and `audit.quarantine`. Match `batch_id`, Airflow run ID, deterministic BigQuery job ID, source/stage/curated counts, monetary totals, and code version. A batch is complete only when final status is `SUCCESS`.
 
 ## Backfill
 
-Confirm the immutable prefix and manifest, then trigger the historical logical date—not an arbitrary path. Run oldest to newest with one active run. Replays must produce zero new curated rows. Compare audit totals before and after.
+Confirm the immutable prefix and manifest, then trigger the historical logical date—not an arbitrary path. Run oldest to newest with one active run because the SCD procedures do not recalculate arbitrary retroactive validity intervals. Replays must produce zero new curated rows. Compare audit totals before and after.
 
 ## Authorized cloud verification (not yet run)
 

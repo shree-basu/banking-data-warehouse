@@ -14,8 +14,9 @@ resource "google_composer_environment" "pipeline" {
     software_config {
       image_version = var.composer_image_version
       env_variables = {
-        BANKING_PROJECT_ID = var.project_id
-        BANKING_RAW_BUCKET = google_storage_bucket.raw.name
+        AIRFLOW_VAR_GCP_PROJECT_ID = var.project_id
+        AIRFLOW_VAR_RAW_BUCKET     = google_storage_bucket.raw.name
+        AIRFLOW_VAR_BQ_LOCATION    = var.bigquery_location
       }
     }
   }

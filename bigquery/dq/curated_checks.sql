@@ -86,8 +86,15 @@ CREATE OR REPLACE PROCEDURE `audit.reconcile_batch`(
   p_business_date DATE
 )
 BEGIN
+  DECLARE source_count INT64;
+  DECLARE source_total NUMERIC;
   DECLARE curated_count INT64;
   DECLARE curated_total NUMERIC;
+  SET (source_count, source_total) = (
+    SELECT AS STRUCT source_row_count, source_monetary_total
+    FROM `audit.batch_run`
+    WHERE batch_id = p_batch_id
+  );
   SET curated_count = (
     SELECT COUNT(*) FROM `curated.fact_transactions`
     WHERE transaction_date = p_business_date AND batch_id = p_batch_id
@@ -103,11 +110,22 @@ BEGIN
   WHERE batch_id = p_batch_id;
 
   INSERT INTO `audit.dq_result`
-  SELECT p_batch_id, p_business_date, 'MONETARY_RECONCILIATION',
-         'fact_transactions', 'ERROR',
-         source_monetary_total = curated_total,
-         CAST(curated_total AS STRING), CAST(source_monetary_total AS STRING),
-         CURRENT_TIMESTAMP()
-  FROM `audit.batch_run`
-  WHERE batch_id = p_batch_id;
+  VALUES
+    (
+      p_batch_id, p_business_date, 'ROW_COUNT_RECONCILIATION',
+      'fact_transactions', 'ERROR', source_count = curated_count,
+      CAST(curated_count AS STRING), CAST(source_count AS STRING),
+      CURRENT_TIMESTAMP()
+    ),
+    (
+      p_batch_id, p_business_date, 'MONETARY_RECONCILIATION',
+      'fact_transactions', 'ERROR', source_total = curated_total,
+      CAST(curated_total AS STRING), CAST(source_total AS STRING),
+      CURRENT_TIMESTAMP()
+    );
+
+  ASSERT source_count = curated_count
+    AS 'final row-count reconciliation failed';
+  ASSERT source_total = curated_total
+    AS 'final monetary reconciliation failed';
 END;

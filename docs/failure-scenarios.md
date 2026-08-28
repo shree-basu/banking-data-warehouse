@@ -7,7 +7,7 @@
 | Schema drift | strict load fails with zero bad records | version contract and code together |
 | Duplicate batch | audit/replay detects existing identity | replay safely; never overwrite identity |
 | Duplicate transaction | critical DQ fails before publication | quarantine and correct source batch |
-| Late dimension | fact uses key `0`, warning persists | load dimension then run repair procedure |
+| Late dimension | fact uses key `0`, warning persists | load a covering account/customer/merchant version, then run repair; otherwise replay chronologically |
 | Staging retry | deterministic table/job IDs reattach or replace safely | retry transient task |
 | DQ failure | quarantine/audit update; curated state unchanged | fix source/rule and rerun |
 | BigQuery transform failure | transaction rolls back | inspect deterministic job and retry |

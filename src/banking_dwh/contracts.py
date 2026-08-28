@@ -69,6 +69,10 @@ KEYS = {
     "merchants": "merchant_id",
     "transactions": "transaction_id",
 }
+GRAINS = {
+    **{entity: (key,) for entity, key in KEYS.items()},
+    "account_snapshots": ("account_id", "business_date"),
+}
 
 
 @dataclass(frozen=True)
@@ -113,6 +117,22 @@ def validate_batch(manifest_path: Path) -> tuple[dict, dict[str, list[dict]], li
     results: list[DqResult] = []
     quarantine: list[dict] = []
     for entity, metadata in manifest["expected_entities"].items():
+        required_metadata = {"object_path", "expected_row_count", "sha256"}
+        if required_metadata - metadata.keys():
+            raise BatchContractError(f"manifest metadata is incomplete for {entity}")
+        expected_path = (
+            f"raw/business_date={manifest['business_date']}/"
+            f"batch_id={manifest['batch_id']}/{entity}.csv"
+        )
+        if metadata["object_path"] != expected_path:
+            raise BatchContractError(f"manifest object path does not match contract: {entity}")
+        expected_row_count = metadata["expected_row_count"]
+        if (
+            not isinstance(expected_row_count, int)
+            or isinstance(expected_row_count, bool)
+            or expected_row_count < 0
+        ):
+            raise BatchContractError(f"invalid expected row count: {entity}")
         path = manifest_path.parent / Path(metadata["object_path"]).name
         if not path.is_file() or _sha256(path) != metadata["sha256"]:
             raise BatchContractError(f"missing or corrupt object: {entity}")
@@ -123,7 +143,7 @@ def validate_batch(manifest_path: Path) -> tuple[dict, dict[str, list[dict]], li
                 DqResult(
                     "SOURCE_ROW_COUNT",
                     entity,
-                    len(rows) == metadata["expected_row_count"],
+                    len(rows) == expected_row_count,
                     len(rows),
                 ),
                 DqResult(
@@ -135,8 +155,8 @@ def validate_batch(manifest_path: Path) -> tuple[dict, dict[str, list[dict]], li
             ]
         )
 
-    for entity, key in KEYS.items():
-        values = [row[key] for row in by_entity[entity]]
+    for entity, grain in GRAINS.items():
+        values = [tuple(row[column] for column in grain) for row in by_entity[entity]]
         duplicate_count = len(values) - len(set(values))
         results.append(
             DqResult("UNIQUE_NATURAL_KEY", entity, duplicate_count == 0, duplicate_count)
