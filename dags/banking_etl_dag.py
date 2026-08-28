@@ -87,7 +87,7 @@ SCHEMAS = {
 
 
 def validate_manifest(bucket: str, object_name: str, **context) -> dict:
-    """Download and validate the manifest and every declared SHA-256 checksum."""
+    """Validate batch identity, exact object paths, counts, and SHA-256 metadata."""
     hook = GCSHook(gcp_conn_id="google_cloud_default")
     manifest = json.loads(hook.download(bucket_name=bucket, object_name=object_name))
     expected_date = context["data_interval_start"].in_timezone(IST).to_date_string()
@@ -97,7 +97,20 @@ def validate_manifest(bucket: str, object_name: str, **context) -> dict:
     if set(manifest["expected_entities"]) != set(ENTITIES):
         raise AirflowFailException("manifest entity set does not match the data contract")
     for entity, metadata in manifest["expected_entities"].items():
-        payload = hook.download(bucket_name=bucket, object_name=metadata["object_path"])
+        required_metadata = {"object_path", "expected_row_count", "sha256"}
+        if required_metadata - metadata.keys():
+            raise AirflowFailException(f"manifest metadata is incomplete for {entity}")
+        expected_path = f"raw/business_date={expected_date}/batch_id={requested_batch}/{entity}.csv"
+        if metadata["object_path"] != expected_path:
+            raise AirflowFailException(f"manifest object path does not match contract for {entity}")
+        expected_row_count = metadata["expected_row_count"]
+        if (
+            not isinstance(expected_row_count, int)
+            or isinstance(expected_row_count, bool)
+            or expected_row_count < 0
+        ):
+            raise AirflowFailException(f"invalid expected row count for {entity}")
+        payload = hook.download(bucket_name=bucket, object_name=expected_path)
         if hashlib.sha256(payload).hexdigest() != metadata["sha256"]:
             raise AirflowFailException(f"SHA-256 mismatch for {entity}")
     return manifest
@@ -239,9 +252,29 @@ with DAG(
             f"""
             DECLARE failed_rules INT64;
             CREATE TEMP TABLE rules AS
-            SELECT 'UNIQUE_TRANSACTION_ID' AS rule_code, 'transactions' AS entity,
+            SELECT 'UNIQUE_CUSTOMER_ID' AS rule_code, 'customers' AS entity,
+                   COUNT(*) - COUNT(DISTINCT customer_id) AS failures
+            FROM `staging.stg_customers__{BATCH_TOKEN}`
+            UNION ALL
+            SELECT 'UNIQUE_ACCOUNT_ID', 'accounts',
+                   COUNT(*) - COUNT(DISTINCT account_id)
+            FROM `staging.stg_accounts__{BATCH_TOKEN}`
+            UNION ALL
+            SELECT 'UNIQUE_MERCHANT_ID', 'merchants',
+                   COUNT(*) - COUNT(DISTINCT merchant_id)
+            FROM `staging.stg_merchants__{BATCH_TOKEN}`
+            UNION ALL
+            SELECT 'UNIQUE_TRANSACTION_ID', 'transactions',
                    COUNT(*) - COUNT(DISTINCT transaction_id) AS failures
             FROM `staging.stg_transactions__{BATCH_TOKEN}`
+            UNION ALL
+            SELECT 'UNIQUE_ACCOUNT_SNAPSHOT_GRAIN', 'account_snapshots', COUNT(*)
+            FROM (
+              SELECT account_id, business_date
+              FROM `staging.stg_account_snapshots__{BATCH_TOKEN}`
+              GROUP BY account_id, business_date
+              HAVING COUNT(*) > 1
+            )
             UNION ALL
             SELECT 'POSITIVE_AMOUNT', 'transactions', COUNTIF(amount <= 0)
             FROM `staging.stg_transactions__{BATCH_TOKEN}`
@@ -282,32 +315,65 @@ with DAG(
         reconcile = query_task(
             "reconcile_manifest_counts",
             f"""
-            DECLARE expected_transactions INT64 DEFAULT CAST(
-              '{{{{ ti.xcom_pull(
-                task_ids="wait_and_validate_manifest.validate_manifest"
-              )["expected_entities"]["transactions"]["expected_row_count"] }}}}' AS INT64
-            );
-            DECLARE staged_transactions INT64 DEFAULT (
-              SELECT COUNT(*) FROM `staging.stg_transactions__{BATCH_TOKEN}`
-            );
             DECLARE staged_total NUMERIC DEFAULT (
               SELECT COALESCE(SUM(amount), 0)
               FROM `staging.stg_transactions__{BATCH_TOKEN}`
             );
+
+            CREATE TEMP TABLE count_rules AS
+            SELECT 'customers' AS entity,
+                   CAST('{{{{ ti.xcom_pull(
+                     task_ids="wait_and_validate_manifest.validate_manifest"
+                   )["expected_entities"]["customers"]["expected_row_count"] }}}}' AS INT64)
+                     AS expected_count,
+                   (SELECT COUNT(*) FROM `staging.stg_customers__{BATCH_TOKEN}`)
+                     AS staged_count
+            UNION ALL
+            SELECT 'accounts',
+                   CAST('{{{{ ti.xcom_pull(
+                     task_ids="wait_and_validate_manifest.validate_manifest"
+                   )["expected_entities"]["accounts"]["expected_row_count"] }}}}' AS INT64),
+                   (SELECT COUNT(*) FROM `staging.stg_accounts__{BATCH_TOKEN}`)
+            UNION ALL
+            SELECT 'merchants',
+                   CAST('{{{{ ti.xcom_pull(
+                     task_ids="wait_and_validate_manifest.validate_manifest"
+                   )["expected_entities"]["merchants"]["expected_row_count"] }}}}' AS INT64),
+                   (SELECT COUNT(*) FROM `staging.stg_merchants__{BATCH_TOKEN}`)
+            UNION ALL
+            SELECT 'transactions',
+                   CAST('{{{{ ti.xcom_pull(
+                     task_ids="wait_and_validate_manifest.validate_manifest"
+                   )["expected_entities"]["transactions"]["expected_row_count"] }}}}' AS INT64),
+                   (SELECT COUNT(*) FROM `staging.stg_transactions__{BATCH_TOKEN}`)
+            UNION ALL
+            SELECT 'account_snapshots',
+                   CAST('{{{{ ti.xcom_pull(
+                     task_ids="wait_and_validate_manifest.validate_manifest"
+                   )["expected_entities"]["account_snapshots"]["expected_row_count"] }}}}'
+                     AS INT64),
+                   (SELECT COUNT(*) FROM `staging.stg_account_snapshots__{BATCH_TOKEN}`);
+
             INSERT INTO `audit.dq_result`
-            VALUES (
-              '{BATCH_ID}', DATE '{BUSINESS_DATE}', 'SOURCE_STAGE_ROW_COUNT',
-              'transactions', 'ERROR', expected_transactions = staged_transactions,
-              CAST(staged_transactions AS STRING), CAST(expected_transactions AS STRING),
-              CURRENT_TIMESTAMP()
-            );
+            SELECT '{BATCH_ID}', DATE '{BUSINESS_DATE}', 'SOURCE_STAGE_ROW_COUNT',
+                   entity, 'ERROR', expected_count = staged_count,
+                   CAST(staged_count AS STRING), CAST(expected_count AS STRING),
+                   CURRENT_TIMESTAMP()
+            FROM count_rules;
+
             UPDATE `audit.batch_run`
-            SET source_row_count = expected_transactions,
-                staging_row_count = staged_transactions,
+            SET source_row_count = (
+                  SELECT expected_count FROM count_rules WHERE entity = 'transactions'
+                ),
+                staging_row_count = (
+                  SELECT staged_count FROM count_rules WHERE entity = 'transactions'
+                ),
                 source_monetary_total = staged_total
             WHERE batch_id = '{BATCH_ID}';
-            ASSERT expected_transactions = staged_transactions
-              AS 'source-to-stage reconciliation failed';
+
+            ASSERT (
+              SELECT COUNTIF(expected_count != staged_count) = 0 FROM count_rules
+            ) AS 'source-to-stage reconciliation failed';
             """,
             group=reconcile_group,
             retries=0,
@@ -357,7 +423,7 @@ with DAG(
     with TaskGroup("run_curated_dq") as curated_dq_group:
         repair_late = query_task(
             "repair_late_dimensions",
-            f"CALL `curated.repair_late_account_keys`(DATE '{BUSINESS_DATE}');",
+            f"CALL `curated.repair_late_dimension_keys`(DATE '{BUSINESS_DATE}');",
             group=curated_dq_group,
         )
         curated_dq = query_task(

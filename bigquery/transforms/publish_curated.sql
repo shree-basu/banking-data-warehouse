@@ -228,7 +228,7 @@ BEGIN
     );
 END;
 
-CREATE OR REPLACE PROCEDURE `curated.repair_late_account_keys`(p_business_date DATE)
+CREATE OR REPLACE PROCEDURE `curated.repair_late_dimension_keys`(p_business_date DATE)
 BEGIN
   UPDATE `curated.fact_transactions` AS fact
   SET
@@ -244,4 +244,13 @@ BEGIN
     AND fact.account_id = account.account_id
     AND fact.transaction_date >= account.effective_from
     AND fact.transaction_date < account.effective_to;
+
+  UPDATE `curated.fact_transactions` AS fact
+  SET merchant_key = merchant.merchant_key
+  FROM `curated.dim_merchant` AS merchant
+  WHERE fact.transaction_date = p_business_date
+    AND fact.merchant_key = '0'
+    AND fact.merchant_id = merchant.merchant_id
+    AND fact.transaction_date >= merchant.effective_from
+    AND fact.transaction_date < merchant.effective_to;
 END;

@@ -139,3 +139,47 @@ def test_manifest_checksum_tampering_fails(initial_manifest):
     (initial_manifest.parent / object_name).write_text("tampered\n", encoding="utf-8")
     with pytest.raises(BatchContractError, match="missing or corrupt"):
         validate_batch(initial_manifest)
+
+
+def test_manifest_object_path_must_match_contract(initial_manifest):
+    manifest = json.loads(initial_manifest.read_text(encoding="utf-8"))
+    manifest["expected_entities"]["customers"]["object_path"] = (
+        "raw/business_date=2026-01-01/batch_id=batch-20260101-v1/accounts.csv"
+    )
+    initial_manifest.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(BatchContractError, match="object path does not match"):
+        validate_batch(initial_manifest)
+
+
+def test_final_reconciliation_failure_rolls_back(
+    initial_manifest, tmp_path, generator, monkeypatch
+):
+    warehouse = LocalWarehouse()
+    warehouse.publish(initial_manifest)
+    before_counts = warehouse.curated_counts()
+    next_day = generator.generate_batch(
+        tmp_path,
+        business_date=date(2026, 1, 2),
+        batch_id="batch-20260102-v1",
+        scenario="next_day",
+    )
+    publish_transactions = warehouse._publish_transactions
+    monkeypatch.setattr(
+        warehouse,
+        "_publish_transactions",
+        lambda rows, manifest: publish_transactions(rows[:-1], manifest),
+    )
+    with pytest.raises(BatchContractError, match="final row-count reconciliation failed"):
+        warehouse.publish(next_day)
+    assert warehouse.curated_counts() == before_counts
+
+
+def test_late_merchant_key_is_repaired(initial_manifest):
+    warehouse = LocalWarehouse()
+    warehouse.publish(initial_manifest)
+    fact = next(iter(warehouse.transactions.values()))
+    expected_merchant_key = fact["merchant_key"]
+    fact["merchant_key"] = UNKNOWN_KEY
+
+    assert warehouse.repair_unknown_dimension_keys() == 1
+    assert fact["merchant_key"] == expected_merchant_key

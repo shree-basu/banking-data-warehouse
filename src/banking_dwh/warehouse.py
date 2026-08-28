@@ -63,6 +63,9 @@ class LocalWarehouse:
             self._publish_transactions(rows["transactions"], manifest)
             self._publish_snapshots(rows["account_snapshots"], manifest)
             self._assert_scd()
+            source_count, curated_count, source_amount, curated_amount = (
+                self._assert_batch_reconciliation(manifest, rows)
+            )
             run = {
                 "batch_id": batch_id,
                 "business_date": manifest["business_date"],
@@ -70,10 +73,10 @@ class LocalWarehouse:
                 "status": "SUCCESS",
                 "source_row_count": sum(len(value) for value in rows.values()),
                 "curated_counts": self.curated_counts(),
-                "source_amount": str(
-                    sum((Decimal(row["amount"]) for row in rows["transactions"]), Decimal("0"))
-                ),
-                "curated_amount": str(self.transaction_total()),
+                "source_transaction_count": source_count,
+                "curated_transaction_count": curated_count,
+                "source_amount": str(source_amount),
+                "curated_amount": str(curated_amount),
                 "code_version": "local-reference-v2",
             }
             self.batch_runs[batch_id] = run
@@ -184,22 +187,44 @@ class LocalWarehouse:
     def repair_unknown_dimension_keys(self) -> int:
         repaired = 0
         for fact in self.transactions.values():
-            if fact["account_key"] != UNKNOWN_KEY:
-                continue
-            account_key = self._dimension_key(
-                "accounts", fact["account_id"], fact["transaction_date"]
-            )
-            if account_key == UNKNOWN_KEY:
-                continue
-            fact["account_key"] = account_key
-            account = next(
-                row for row in self.dimensions["accounts"] if row["account_key"] == account_key
-            )
-            fact["customer_key"] = self._dimension_key(
-                "customers", account["customer_id"], fact["transaction_date"]
-            )
-            repaired += 1
+            if fact["account_key"] == UNKNOWN_KEY:
+                account_key = self._dimension_key(
+                    "accounts", fact["account_id"], fact["transaction_date"]
+                )
+                if account_key != UNKNOWN_KEY:
+                    fact["account_key"] = account_key
+                    account = next(
+                        row
+                        for row in self.dimensions["accounts"]
+                        if row["account_key"] == account_key
+                    )
+                    fact["customer_key"] = self._dimension_key(
+                        "customers", account["customer_id"], fact["transaction_date"]
+                    )
+                    repaired += 1
+            if fact["merchant_key"] == UNKNOWN_KEY:
+                merchant_key = self._dimension_key(
+                    "merchants", fact["merchant_id"], fact["transaction_date"]
+                )
+                if merchant_key != UNKNOWN_KEY:
+                    fact["merchant_key"] = merchant_key
+                    repaired += 1
         return repaired
+
+    def _assert_batch_reconciliation(
+        self, manifest: dict, rows: dict[str, list[dict]]
+    ) -> tuple[int, int, Decimal, Decimal]:
+        batch_id = manifest["batch_id"]
+        source_count = len(rows["transactions"])
+        source_amount = sum((Decimal(row["amount"]) for row in rows["transactions"]), Decimal("0"))
+        curated_rows = [row for row in self.transactions.values() if row["batch_id"] == batch_id]
+        curated_count = len(curated_rows)
+        curated_amount = sum((Decimal(row["amount"]) for row in curated_rows), Decimal("0"))
+        if source_count != curated_count:
+            raise BatchContractError("final row-count reconciliation failed")
+        if source_amount != curated_amount:
+            raise BatchContractError("final monetary reconciliation failed")
+        return source_count, curated_count, source_amount, curated_amount
 
     def _assert_scd(self) -> None:
         for entity, rows in self.dimensions.items():
