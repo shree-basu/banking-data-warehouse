@@ -2,5 +2,5 @@
 # Install the repository itself separately with: python -m pip install --no-deps -e .
 Faker==30.8.2
 pytest==8.3.5
-ruff==0.11.2
+ruff==0.16.5
 sqlfluff==3.3.1
