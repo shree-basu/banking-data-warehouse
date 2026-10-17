@@ -55,7 +55,7 @@ jobs:
       - name: Apply approved plan
         run: terraform -chdir=infra/terraform apply -input=false -auto-approve banking.tfplan
       - name: Set up Google Cloud CLI
-        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
       - name: Apply BigQuery schema and procedure migrations
         shell: bash
         run: |
